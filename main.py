@@ -8,7 +8,7 @@ from gevent.pywsgi import WSGIServer
 from prometheus_client import Summary, generate_latest
 from prometheus_client.core import CollectorRegistry
 
-from emqxlibs import PYMServer
+from emqxlibs import EMQXItems
 
 app = Flask(__name__)
 
@@ -28,7 +28,7 @@ class Monitor:
     def __init__(self):
         #
         self.collector_registry = CollectorRegistry(auto_describe=False)
-        self.emqx_clients = PYMServer()
+        self.emqx_clients = None
         labels = copy.deepcopy(__LABELS__)
 
         self.emqx_clients_summary = Summary(
@@ -45,20 +45,23 @@ class Monitor:
         :return:
         """
         summary_class = getattr(self, summary_function)
-        self.emqx_clients.connect(**kwargs)
+        self.emqx_clients = EMQXItems(**kwargs)
 
         data = list()
-        hu_clients = self.emqx_clients.get_hu_clients()
-        data.append({
-            "address": kwargs['host'],
-            "client_type": "hu",
-            "value": hu_clients
-        })
-        tbox_clients = self.emqx_clients.get_tbox_clients()
+        hu_clients_counts = 0
+        tbox_clients_counts = 0
+        for x in self.emqx_clients:
+            hu_clients_counts = hu_clients_counts + x[0]
+            tbox_clients_counts = tbox_clients_counts + x[1]
         data.append({
             "address": kwargs['host'],
             "client_type": "tbox",
-            "value": tbox_clients
+            "value": tbox_clients_counts
+        })
+        data.append({
+            "address": kwargs['host'],
+            "client_type": "hu",
+            "value": hu_clients_counts
         })
 
         if not data:

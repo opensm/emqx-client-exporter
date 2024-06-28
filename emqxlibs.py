@@ -32,7 +32,7 @@ class EMQXObject:
 class PYMServer:
     url = None
     headers = dict()
-    client = None
+    _client = None
 
     def connect(self, host, port, username, password, api_version="v5"):
         """
@@ -53,42 +53,64 @@ class PYMServer:
         self.headers['Content-Type'] = "application/json"
         self.headers['Authorization'] = auth_header
 
-    def get_hu_clients(self):
+    def clients(self, conn_state="connected", _page=1, _limit=100):
         """
-        :return: 获取客户端情况
-        """
-        self.client = urllib.request.Request(self.url + "/clients?conn_state=connected")
-        for key, value in self.headers.items():
-            self.client.add_header(key, value)
-        data = self.run_query()
-        df = pd.DataFrame(data)
-        num_rows_containing_foo = df['clientid'].str.contains('HU').sum()
-        return num_rows_containing_foo
-
-    def get_tbox_clients(self):
-        """
+        :param conn_state:
+        :param _page:
+        :param _limit:
         :return:
         """
-        self.client = urllib.request.Request(self.url + "/clients?conn_state=connected")
-        for key, value in self.headers.items():
-            self.client.add_header(key, value)
-        data = self.run_query()
-        df = pd.DataFrame(data)
-        rows_without_string = ~df['clientid'].str.contains('HU')
-        count_rows_without_string = rows_without_string.sum()
-        return count_rows_without_string
 
-    def run_query(self):
+        data = self.run_query(
+            uri="clients",
+            params="conn_state={}&page={}&limit={}".format(
+                conn_state,
+                _page,
+                _limit
+            ))
+        if not data:
+            return None
+        df = pd.DataFrame(data)
+        hu_client_counts = df['clientid'].str.contains('-HU', case=False, na=False).sum()
+        tbox_client_counts = (~df['clientid'].str.contains('-HU', case=False, na=False)).sum()
+        return hu_client_counts, tbox_client_counts
+
+    def run_query(self, uri, params=None):
         """
+        :param uri:
+        :param params:
         :return:
         """
-        with urllib.request.urlopen(self.client) as response:
+        if params is not None:
+            _url = self.url + "/{}?{}".format(uri, params)
+            # self._client = urllib.request.Request(self.url + "/{}?{}".format(uri, params))
+        else:
+            _url = self.url + "/{}".format(uri)
+        logger.info(_url)
+        self._client = urllib.request.Request(_url)
+        for key, value in self.headers.items():
+            self._client.add_header(key, value)
+        with urllib.request.urlopen(self._client) as response:
             data = json.loads(response.read().decode())
             return data['data']
 
 
-if __name__ == '__main__':
-    server = PYMServer()
-    server.connect("uat-emqx.kayyi.com", 443, "42a760d3372cd36a", "Jb79BzVJ9B80KtBqJFkjF4JqO9AV2OTX5vgKWHj3epJ5vJ")
-    print(server.get_hu_clients())
-    print(server.get_tbox_clients())
+class EMQXItems:
+    _offset = 1
+
+    def __init__(self, **kwargs):
+        self.emqx_client = PYMServer()
+        self.emqx_client.connect(**kwargs)
+
+    def __next__(self):
+        data = self.emqx_client.clients(_page=self._offset, _limit=500)
+        self._offset = self._offset + 1
+        if not data:
+            raise StopIteration
+        return data
+
+    def __iter__(self):
+        return self
+
+
+__all__ = ["EMQXItems"]
