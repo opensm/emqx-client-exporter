@@ -48,7 +48,7 @@ class PYMServer:
         elif port == 443:
             self.url = "https://{}/api/{}".format(host, api_version)
         else:
-            self.url = "https://{}:{}/api/{}".format(host, port, api_version)
+            self.url = "http://{}:{}/api/{}".format(host, port, api_version)
         auth_header = "Basic " + base64.b64encode((username + ":" + password).encode()).decode()
         self.headers['Content-Type'] = "application/json"
         self.headers['Authorization'] = auth_header
